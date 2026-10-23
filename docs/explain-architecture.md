@@ -18,6 +18,20 @@ Those layers are themselves split into different logical units.
 
 It's important that the service enables true horizontal scalability.
 
+The rest API server is the gate keeper on data,
+and must ensure it's consistency (at it's level of knowledge).
+In particular it handles write concurrency and
+revision history consistency.
+
+The core API includes:
+* writing a new product revision
+* updating an existing product revision
+* (bulk) reading a product revision
+* (bulk) reading full product history
+* iterating products on simple criteria
+  (product type, lifecycle state, revision span range)
+
+
 ### MariaDB Backend
 
 The [MariaDB](https://mariadb.com/docs) backend is a multi-replicated MariaDB instance.
@@ -38,6 +52,9 @@ Product Opener only is in charge of product schema versioning and migrations
 
 This way the Products Catalog is quite agnostic about the data it stores,
 concentrating its logic on retrieval, revisions and schema versioning.
+
+Read [Explanation of SQL database schema](./explain-sql-schema.md)
+for more information.
 
 ### Redis stream
 
