@@ -101,6 +101,23 @@ leading to a higher or lower expected latency.
 This can enable faster retrieval for certain applications
 (eg: higher QoS for privilege partners, or lower for batch operations, etc.).
 
+### Authentication
+
+At start, only Product Opener
+will write to the database.
+
+But we won't use an authentication framework for that.
+
+Initially the service is internal to Open Food Facts infrastructure.
+So only a trusted set of apps have access:
+Product Opener, Search-a-licious, Robotoff and Open Food Facts Query.
+
+If we feel that we need some protection, even internally,
+we might use simple auth,
+or secret access token.
+
+This is why authentication is not set as a priority at the start.
+
 ## Request flow overview
 
 This is a high level overview of where this service stands and how it is used,
