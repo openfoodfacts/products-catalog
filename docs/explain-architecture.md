@@ -31,6 +31,32 @@ The core API includes:
 * iterating products on simple criteria
   (product type, lifecycle state, revision span range)
 
+### Storage layer
+
+Here we don't talk about the initial storage layer (json files),
+but the target one (SQL Database).
+
+The storage layer use the same architecture
+as [openfoodfacts-query](https://github.com/openfoodfacts/openfoodfacts-query/) project.
+
+The project doesn't use a traditional ORM with mapped Python classes.
+The persistence layer uses an async database connection library
+and explicit SQL.
+The Python models primarily describe and validate API queries and events,
+rather than representing database rows.
+
+The schema is defined in modules under `tables` sub-package.
+These modules contain SQL for creating tables
+and helpers for reading and updating them,
+and migrations reuse that table-oriented code.
+
+The database helpers manage a
+shared asynchronous PostgreSQL connection pool,
+configure JSON encoding and decoding,
+and provide transaction contexts.
+
+Database schema upgrades are explicit Python migrations,
+recorded in a migration table named `db_migrations`
 
 ### MariaDB Backend
 

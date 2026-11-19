@@ -4,95 +4,115 @@
 
 We use MariaDB with **InnoDB** storage engine.
 
-## Products tables
+## Product tables
 
-The products table is divided in two tables:
-* the table with the latest revisions: `products`
-* the table with the history: `products_revisions`
+The product catalog is divided in three tables:
+* the table with the latest revisions: `product`
+* the table with the history: `product_revision`
+* the table with the changes: `change`
 
-Both tables have the same fields.
+`product` and `product_revision` have the same fields.
+The `change` table has no current/history split:
+it stores the changes of every revision in a single table,
+keyed by `(code, rev)`.
 
-Having latest revisions in `products` is sensible because
+Having latest revisions in `product` is sensible because
 most of the requests we expect will be to query latest revision.
 
-**QUESTION:** should latest revision in `products`
-and also in `products_revisions` at the cost of an overhead ?
+**QUESTION:** should latest revision in `product`
+and also in `product_revision` at the cost of an overhead ?
 This would simplify request on full history at the cost of a bigger database
 (mean revision number in database seems to be around 10, so it's about 10% increase).
+**Note:** the rest of this document currently assuming
+we only have current version in `product`
 
-### The Products table fields
 
-`products` and `products_revisions` contains following fields:
+### The product table fields
+
+`product` and `product_revision` contains following fields:
 
 * `code` - is product code (varchar)
 * `product_type` - is the product type (at this revision) mapped to a tinyint
-* `revision` - is the revision number (int)
+* `rev` - is the revision number (int)
 * `lifecycle` - state of the product at this revision
   * it is either "deleted", "active" or "obsolete" represented by a TINYINT (0, 1, 2)
-* `created` - the date the revision was created
-* `updated` - the date of update (different from created in case of in-place update)
-* `changes` - is a JSON containing data about the change (LONGTEXT + JSON_VALID check)
+* `last_modified_t` - the date the revision was created
+   (corresponding to `last_modified_t` in the product data)
+* `last_updated_t` - the date of update,
+   corresponding to `last_updated_t` in the product data
+  (different from `last_modified_t` in case of in-place update)
 * `data` - is the product data as JSON (LONGTEXT + JSON_VALID check)
 * `data_schema_version` - is the schema version number for data.
   It's important to know what to expect,
   (and to eventually conduct in place migrations, see [Migrating schemas](#migrating-schemas))
-* `changes_schema_version` - is the schema version number for changes.
-* `data_hash` - a sha256 sum some data (see below, meaning given by service)
+* `rev_archived_t` - the time the revision was archived,
+  that is, was replaced by a newer revision.
+  In `product` table `rev_archived_t`
+  is always the same and it is the maximum date that can be set.
 
-In products, the natural key is `code`.
-In products_revisions, the natural key of this table is `(code, revision)`.
+
+
+In `product`, the natural key is `code`.
+In `product_revision`, the natural key of this table is `(code, rev)`.
 
 `lifecycle` defaults to 1,
 so that if it's accidentally forgotten it does not result in a silent deletion.
 
+<a id="schema-version"></a>
 `data` and `changes` schemas are under the control of Product Opener,
-but `data_schema_version` and `changes_schema_version` help have an indication
+but `data_schema_version` (in `product` and `product_revision`)
+and `changes_schema_version` (in `change`) help have an indication
 on their schema version.
 
-`data` contains the full product information, `code`, `product_type`, `revision`, `lifecycle` columns are duplicate of the information in `data`.
+`data` contains the full product information, `code`, `product_type`, `rev`, `lifecycle` columns are duplicate of the information in `data`.
 
-`data_hash` is a column that can help verify if a modification is a replay of a previous update (duplicate POST), or a blank modification.
-The md5sum is computed on a canonicalized json (details at implementation time),
-maybe with primary (non inferred) data + changes,
-with eventual removal of canonical data that interfere (timestamps, minor computed fields)…
-It's up to the service to determine the logic
-(and for example if it wants to allow "empty modifications")
+The `rev_archived_t` enables partitioning the `product_revision` table
+(see [Table partitioning](#table-partitioning), below).
+It also helps querying  run a query like "get me all products that were active on xxx date".
 
-**QUESTION:** is this data_hash really desirable ?
-**QUESTION:** Is this up to the Product Catalog service to compute this hash,
-or maybe Product Opener (it's business driven).
-The latter option might be a problem
-if other services can update the data directly through Products Catalog.
+### The change table fields
 
-**QUESTION:** an `archived_at` field
-correponding to the time the product revision was overridden by a new revision
-in `products_revisions` might make sense.
-See discussion in [Table partitioning](#table-partitioning) below.
+`change` contains the changes associated with each product revision:
+
+* `code` - is product code (varchar)
+* `rev` - is the revision number (int)
+* `changes` - is a JSON containing data about the change (LONGTEXT + JSON_VALID check)
+* `changes_schema_version` - is the schema version number for changes
+  (see [the explanation above for `data_schema_version`](#schema-version))
+
+The natural key of this table is `(code, rev)`.
+There is no current/history split for changes:
+`change` stores one row per product revision,
+including the latest revision.
 
 ### Indexes
 
 We will start with minimal useful indexes:
 
-On both tables:
+On `product` and `product_revision`:
   * `code`
-    * note: on `products` it's the (primary key)
-    * on `products_revisions` it helps fetch all revisions for a single product
-  * `created`
-  * `updated`
+    * note: on `product` it's the (primary key)
+    * on `product_revision` it helps fetch all revisions for a single product
+  * `last_modified_t`
+  * `last_updated_t`
 
-on `products`:
+on `product`:
   * `(product_type,lifecycle, code)`
     * to iterate products filtering by product_type and lifecycle
 
-on `products_revisions`:
-  * `(code,revision)` (primary key)
+on `product_revision`:
+  * `(code,rev)` (primary key)
+
+on `change`:
+  * `(code,rev)` (primary key)
 
 After running performances tests, and developing the API,
 we might add more indexes if needed.
 
 ### Other settings
 
-In `products_revisions` the `data` field must be compressed.
+In `product` and `product_revision`
+the `data` field must be compressed.
 It's a one time write, many read,
 and this will save disk space and memory footprint.
 
@@ -102,12 +122,17 @@ Some guidelines for operations on the database.
 
 ### Inserting a product revision
 
-If it's a new product it just lands in `products`.
+If it's a new product it just lands in `product`,
+and its changes are added to the `change` table,
+keyed by `(code, rev)`.
 
 If it's a revision of an existing product (be it deleted or obsolete),
 it must:
-* copy last revision to `products_revisions` table
-* update the `products` row for this `code` with the new values
+* copy last revision data to the `product_revision` table
+  (its changes are already in the `change` table)
+* update the `product` row for this `code` with the new values
+* add the changes for this revision to the `change` table,
+  keyed by `(code, rev)`
 
 
 ### Deleting a product
@@ -123,8 +148,8 @@ But it should normally be quite small (it's up to the service to ensure that).
 Product Opener is completely removing products
 when the information is almost empty and we have no previous revision.
 
-This correspond to a real removal of a line in `products` table.
-But we must ensure revision is `1`.
+This correspond to a real removal of a line in `product` table.
+But we must ensure `rev` is `1`.
 
 ### About in place updates
 
@@ -133,14 +158,15 @@ That is, it should never touch the product primary (non inferred) data,
 but might touch the product inferred data
 (*_tags, ingredient analysis, scores, etc.)
 
-Also it should not touch `changes` field.
+Also it should not touch the `changes` field in the `change` table.
 
 ### Find a product revision / iterate on revisions
 
-Beware of using `UNION ALL` when searching for product revisions
-that might either be in `products` or `products_revisions`
+Beware of using `UNION ALL` or a transaction
+when searching for product revisions
+that might either be in `product` or `product_revision`
 to ensure consistency of results
-([keep a consistent MVCC snapshot](https://mariadb.com/docs/server/server-usage/storage-engines/tidesql/tidesql-transactions-and-isolation),
+([keep a consistent MVCC snapshot](https://mariadb.com/docs/server/ha-and-performance/standard-replication/enhancements-for-start-transaction-with-consistent-snapshot#the-innodb-read-view),
 avoid race condition with an update).
 
 ### Fetching a product revision history
@@ -163,13 +189,17 @@ The concurrency models is part of its definition.
 
 It must ensure that
 * revisions for a single product start at 1, are consecutive,
-  and follow in time (`created` is always increasing)
+  and follow in time (`last_modified_t` is always increasing)
   (if a revision is problematic for some reason,
   keep it but remove problematic data).
-* latest revision is in `products`
+* latest revision is in `product`
 
 A way to check that is to have:
-`products.revision = 1 + COALESCE(MAX(products_revisions.revision), 0) … WHERE products_revisions.code = products.code`
+`product.rev = 1 + COALESCE(MAX(product_revision.rev), 0) … WHERE product_revision.code = product.code`
+
+The best way to do that, though, is to use a transaction,
+immediately lock the row for update,
+and add one to current revision.
 
 ### Time consistency
 
@@ -177,13 +207,14 @@ All timestamps must be UTC (it's up to the API to decide if it only accept UTC),
 the schema definition of the database and query design
 might help handle this smoothly.
 
-`created`, `updated` and `archived_at` must come from the database clock
+`last_modified_t`, `last_updated_t` and `rev_archived_t` must come from the database clock
 (eg `NOW(4)` in the insert statement)
 
 ### Tables are not redundant
 
-`products` can't be rebuilt from `products_revisions`
-so back-ups must include both tables.
+`product` can't be rebuilt from `product_revision`,
+and changes are stored separately in `change`,
+so back-ups must include all three tables.
 
 
 ### Migrating schemas
@@ -192,17 +223,17 @@ This is an open question.
 
 Should we migrate old revisions schema to newer schema versions ?
 
-This seems a good idea at least for products in `products` table,
+This seems a good idea at least for products in `product` table,
 as data exports will lean on that,
 and also it would avoid version transformation on Product Opener side
 and enable tools to read directly the catalog
 (eg. robotoff / search-a-licious / openfoodfacts-query ),
 making them more efficient (and saving Product Opener queries).
 
-This is also too be considered for `products_revisions` table.
+This is also too be considered for `product_revision` and `change` tables.
 This would ease re-users working with old version to have a consistent schema,
 and there again avoid Product Opener conversions.
-This might happen at a lower pace than for `products` table.
+This might happen at a lower pace than for `product` table.
 Non consistent revisions that Product Opener can't convert
 could be left has is.
 
@@ -224,39 +255,39 @@ would be:
 The point 1 is not that relevant because our table as few indexed fields.
 So choosing good index should be enough.
 
-The distribution over multiple storage could be of use for `products_revisions`,
+The distribution over multiple storage could be of use for `product_revision`,
 but it really depends on usage and options.
 
 * cons:
   * at the moment we expect a db size < 2T,
     which is bearable for a reasonable SSD size
-  * the `products` table can already be assigned to a different storage
-    that `products_revisions`
+  * the `product` table can already be assigned to a different storage
+    that `product_revision`
   * the partitioning key is not evident:
-    * if we partition on: `created` which seems a natural choice
+    * if we partition on: `last_modified_t` which seems a natural choice
       * if people needs historical view of current products,
-        `created < SOME_POINT_IN_TIME` can leverage partitioning
+        `last_modified_t < SOME_POINT_IN_TIME` can leverage partitioning
         but we still have to check
-        all partitions with `created` before this point in time,
+        all partitions with `last_modified_t` before this point in time,
         because some products might have
         their last version created a long time ago.
         So for recent dates, optimization is really marginal.
       * if we want old partition to be frozen,
-        we need to duplicate current product revision in `products_revisions`
+        we need to duplicate current product revision in `product_revision`
         (which might be reasonable though, see above)
     * `product_type` could also be a discriminant, but currently it would be marginal,
       as 90% is product_type food. Also `product_type` can change for a product.
     * hashing on `code` could also be a way to partition,
-      * same products revisions would 
+      * same products revisions would
       * the drawback is that partitions all grows over time (less predictable behaviour)
   * Partitioning impose several limitations in MariaDB see [Partitioning Limitations](https://mariadb.com/docs/server/server-usage/partitioning-tables/partitioning-limitations)
     The most important to consider here:
 
     * > All columns used in the partitioning expression for a partitioned table must be part of every unique key that the table may have
 
-      If we don't plan to use `code` or `revision` to partition,
+      If we don't plan to use `code` or `rev` to partition,
       this adds a new column to the table key.
-      It does not prevent from having a `UNIQUE` constraint on `code` and `revision`
+      It does not prevent from having a `UNIQUE` constraint on `code` and `rev`
 
     * > A partitioned table cannot contain, or be referenced by, foreign keys.
 
@@ -264,21 +295,21 @@ but it really depends on usage and options.
       it does not seems to have a big impact
 
 * pros:
-  * if at some point we want to partition `products_revisions`
+  * if at some point we want to partition `product_revision`
     (because it's too big to fit a single disk) it is a very expensive operation,
     (maybe several days of read only operations)
     because it's equivalent to a full table rewrite.
     So doing it in anticipation seems a fair choice.
-  * we could add a `archived_at` field
+  * we have a `rev_archived_t` field
     (the date at which the revision was no more the last)
-    and partition on that.
-    * In this case, we don't need to duplicate current `products` revision
-      in `products_revisions`
+    we can partition on that.
+    * In this case, we don't need to duplicate current `product` revision
+      in `product_revision`
     * if people needs historical view of current products,
-      they need to get lines for `products` where `created < SOME_POINT_IN_TIME`
-      and lines for `products_revisions`
+      they need to get lines for `product` where `last_modified_t < SOME_POINT_IN_TIME`
+      and lines for `product_revision`
       where `achived_at > SOME_POINT_IN_TIME`
-      (and `created ⩽  SOME_POINT_IN_TIME`)
+      (and `last_modified_t ⩽  SOME_POINT_IN_TIME`)
       which can leverage partitioning,
       with better performances when `SOME_POINT_IN_TIME` is more recent.
     * We can place tables partitions with older partitions on HDD
@@ -305,14 +336,14 @@ it's the most widely used engine (conservative choice).
 MariaDB offers a way to replicate only chosen table to another instance.
 
 It seems tempting to have read only MariaDB
-that only replicate the `products` table.
+that only replicate the `product` table.
 
 But beware that there are some drawbacks:
 * consistency is not ensured
   because statements with multiples tables
   are not necessarily replicated, so there can be a drift, it's brittle.
   In particular in our case, most updates
-  will use `products` and `products_revisions` at the same time
+  will use `product`, `product_revision` and `change` at the same time
 * the target instance still receive the whole replication stream,
   and filtering happens at this end of the network,
   so it does not save network bandwidth.

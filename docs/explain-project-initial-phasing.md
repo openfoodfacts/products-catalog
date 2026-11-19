@@ -235,4 +235,6 @@ to be more useful and robust.
   * Taxonomy lookup,
   * etc.
 
+## Current progress
 
+See https://github.com/openfoodfacts/products-catalog/issues/2
