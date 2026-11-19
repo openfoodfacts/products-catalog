@@ -187,8 +187,9 @@ to read the last revision.
 This keeps the event contract small and stable
 while the product schema keeps moving,
 and it keeps the catalog as the single source of truth:
-a consumer that misses an event or restarts
-does not hold a stale copy of the product data, only a missing notification.
+a consumer that misses an event can still retain stale derived data.
+Consumers must replay missed notifications or reconcile their indexes
+with the catalog after a gap or restart.
 
 ```mermaid
 flowchart LR
