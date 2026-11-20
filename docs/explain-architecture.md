@@ -19,7 +19,7 @@ Those layers are themselves split into different logical units.
 It's important that the service enables true horizontal scalability.
 
 The rest API server is the gate keeper on data,
-and must ensure it's consistency (at it's level of knowledge).
+and must ensure its consistency (at its level of knowledge).
 In particular it handles write concurrency and
 revision history consistency.
 
@@ -124,20 +124,20 @@ This is a high level overview of where this service stands and how it is used,
 with a simple use case of a user viewing then updating a product on the web.
 
 1. the User 🧑🏽‍💻 goes to the product page with its browser
-2. Product Opener 🥫 process the request
+2. Product Opener 🥫 processes the request
 3. Product Opener 🥫 ask the **Product Catalog** 🗃️ for product information
-4. the **Product Catalog** 🗃️ retrieve data from **MariaDB 🦭**
+4. the **Product Catalog** 🗃️ retrieves data from **MariaDB 🦭**
 5. the **Product Catalog** 🗃️ sends back data to Product Opener 🥫
 6. Product Opener 🥫 sends back processed product information to the User 🧑🏽‍💻
-7. The User 🧑🏽‍💻 edit the product informations and send data to Product Opener 🥫
+7. The User 🧑🏽‍💻 edits the product information and sends data to Product Opener 🥫
 8. Product Opener 🥫 (after retrieving products data like step 3 to 5 above),
-   process the data, update the product accordingly
-   and send the data to **Product Catalog** 🗃️ with a new revision version
+   processes the data, updates the product accordingly
+   and sends the data to **Product Catalog** 🗃️ with a new revision version
 9. the **Product Catalog** 🗃️ checks the information
    and stores the data in **MariaDB 🦭**
 10. the **Product Catalog** 🗃️ sends an event to the Redis Stream 🗞️
-11. the **Product Catalog** 🗃️ acknowledge the update to Product Opener 🥫
-12. Product Opener 🥫 redirect the User 🧑🏽‍💻 to the product page (returning to step 1)
+11. the **Product Catalog** 🗃️ acknowledges the update to Product Opener 🥫
+12. Product Opener 🥫 redirects the User 🧑🏽‍💻 to the product page (returning to step 1)
 13. Robotoff 🤖 / Open Food Facts Query 🧭 and Search-a-licious 🔍
     receive the event from the Redis Stream 🗞️
 14. Robotoff 🤖 / Open Food Facts Query 🧭 and Search-a-licious 🔍
