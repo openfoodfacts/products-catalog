@@ -26,13 +26,13 @@ Chosen option: "move product folder to Product Catalog", because it encapsulates
 
 Migration will require merges in a specific order:
 
-1. Product Catalog: Create the shared volume (as a bind mount)
+1. Product Catalog: Create the shared volume (as a bind mount). For staging create new bind mount for existing folder
 2. Product Opener: 
    * Add Product Catalog as dependency
-   * Migrate data from the old volume to the new one
+   * [Local development] Migrate data from the old volume to the new one
    * Change containers to access the new volume
 3. Product Catalog: Continued development
-4. Product Opener: [after a suitable sunset period] Remove migration scripts
+4. Product Opener: [after a suitable sunset period] Remove local development migration scripts
 
 ## Pros and Cons of the Options
 
@@ -45,7 +45,9 @@ The Product Catalog service could mount this volume in docker but for local deve
 - Bad: Does not address transfer of ownership of product data
 - Bad: Complex setup for local development
 
-### Change Product Opener volume to be a bind mount
+### Change Product Opener volume to be a bind mount for local development
+
+Note that a bind mount is already used in staging.
 
 - Good: Easy for local and docker deployments
 - Bad: Requires data migration
