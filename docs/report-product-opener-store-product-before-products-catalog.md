@@ -30,7 +30,7 @@ Write path, in order:
 
 1. **Schema**: sets `schema_version`.
 2. **Structural-move detection**:
-   `old_code`, `old_product_type` or `server` set 
+   `old_code`, `old_product_type` or `server` set
    → never skip the save (`has_structural_move`, Products.pm:1312).
 3. **Server/product_type resolution**: `server` → `change_product_type`,
    to detect if product type or server has changed.
@@ -282,7 +282,7 @@ Overall this is a simplification and there is no big issue in the transformation
 There are cases where `store_product` is called in non-standard ways:
 
 - **`scripts/get_product_from_mongodb.pl:10-22`**
-  comment says "Retrieve the product from MongoDB" but it calls `retrieve_product`, 
+  comment says "Retrieve the product from MongoDB" but it calls `retrieve_product`,
   i.e. reads the file.
 
   * Misleading name but can use the Products Catalog.
@@ -331,7 +331,7 @@ Scripts:
 
 This means (no schema conversion, no deleted check, no `server` tagging)
 
-- [`Products.pm::assign_new_code](https://github.com/openfoodfacts/openfoodfacts-server/blob/a4b52231eb6c221c7c5fa279e3232b5c233fd7f2/lib/ProductOpener/Products.pm#L427)
+- [`Products.pm::assign_new_code`](https://github.com/openfoodfacts/openfoodfacts-server/blob/a4b52231eb6c221c7c5fa279e3232b5c233fd7f2/lib/ProductOpener/Products.pm#L427)
   uses a global `internal_code.sto` file
 
   - This should be provided by the API of Products Catalog
