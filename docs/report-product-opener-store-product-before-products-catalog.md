@@ -318,6 +318,13 @@ Some part of the codes read the `changes.json` file:
 
 * [`APIProductRead::read_product_api`](https://github.com/openfoodfacts/openfoodfacts-server/blob/a4b52231eb6c221c7c5fa279e3232b5c233fd7f2/lib/ProductOpener/APIProductRead.pm:207)
 
+* [`cgi/product_image.pl`](https://github.com/openfoodfacts/openfoodfacts-server/blob/a4b52231eb6c221c7c5fa279e3232b5c233fd7f2/cgi/product_image.pl)
+
+Scripts:
+* `scripts/count_product_contributions_by_year.pl`
+* `scripts/extract_historical_product_data.pl`
+* `scripts/update_recent_changes.pl`
+
 ### Reads that bypass `retrieve_product`
 
 #### Product data read directly from files
@@ -334,6 +341,10 @@ This means (no schema conversion, no deleted check, no `server` tagging)
 
   - we mentioned that already, see [issue #3](https://github.com/openfoodfacts/products-catalog/issues/3)
 
+- `scripts/check_products_in_sto_files.pl`, `scripts/fix_mongodb_collections.pl`
+  iterates all the files by path
+
+- `scripts/update_all_products_from_dir_in_mongodb.pl`
 
 #### Reads from MongoDB instead of the product file
 
@@ -344,11 +355,12 @@ by using MongoDB.
 This should instead be provided by product Catalog
 
 - [`Data.pm:175, 235`](https://github.com/openfoodfacts/openfoodfacts-server/blob/a4b52231eb6c221c7c5fa279e3232b5c233fd7f2/lib/ProductOpener/Data.pm#L175)
-  provides iteration helpers that should use this new API instead
+  provides iteration helpers that should use this new API instead
 
 - `PackagerCodes`/[`PackagingStats.pm:626`](https://github.com/openfoodfacts/openfoodfacts-server/blob/a4b52231eb6c221c7c5fa279e3232b5c233fd7f2/lib/ProductOpener/PackagingStats.pm#L626)
 - [`Export.pm:295-302`](https://github.com/openfoodfacts/openfoodfacts-server/blob/a4b52231eb6c221c7c5fa279e3232b5c233fd7f2/lib/ProductOpener/Export.pm#L295)
 - [`Missions.pm:233`](https://github.com/openfoodfacts/openfoodfacts-server/blob/a4b52231eb6c221c7c5fa279e3232b5c233fd7f2/lib/ProductOpener/Missions.pm#L233).
+- `scripts/update_all_products_from_dir_in_mongodb.pl`
 
 
 ### Other usages of store / retrieve (sto files)
@@ -360,18 +372,25 @@ As already mentions, we have the `scans.json` and `images.json` files in product
 
 * Usage as a database
   * `Users.pm` stores users preferences: `users/<id>.sto`
+  * `scripts/gen_users_emails.pl` re-creates `users_emails.sto`
+    (this one should be normally deprecated since we have keycloak)
   * `Orgs.pm` stores org data `orgs/<id>.sto` and a global `orgs_glns.sto`
   * `Producers.pm` stores columns mapping in `orgs/<id>/all_columns_fields.sto`
     (this could be an attribute of org)
 
     and history of exports as `orgs/<id>/exports.sto`
+  * scripts around import asynchronous jobs (`import_file*.pl`)
+    * store imports in `import_files.sto` per org,
+    * they also store some data about the imports in `sto` files
 
 * Usage to store global data
-  * `Lang.pm` stores language compilation results
+  * `build_lang.pl` and `Lang.pm` stores language compilation results
   * `Missions.pm` stores a global `missions.sto`
-  * `PackagerCodes.pm` stores a global `packager-codes/packager_codes.sto`
-  * `Display.pm` stores global private data like users / ambassadors / countries points
+  * `scripts/update_packager_codes*.pl` and `PackagerCodes.pm` stores a global `packager-codes/packager_codes.sto`
+  * `Display.pm` and `scripts/gen_top_tags_per_country.pl`
+    store global private data like users / ambassadors / countries points
   * `Stats.pm` stores categories stats per country in `categories_stats` folder
+  * `scripts/scanbot.pl` stores a global `all_products_scans.sto` file
 
 * `Redis.pm` us a sto file to persist the stream id.
 
